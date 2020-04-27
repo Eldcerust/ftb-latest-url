@@ -1,210 +1,95 @@
 // const express = require('express');
 // const helmet = require('helmet');
-const cheerio = require('cheerio');
-const axios = require('axios');
-const cloudflarescraper = require('cloudscraper');
-const fs = require('fs');
-const requestModule = require('request');
-const helmet = require('helmet');
-const express = require('express');
-
-const http = require('follow-redirects').http;
-const https = require('follow-redirects').https;
-
-const serverBase = 'https://www.feed-the-beast.com';
-const filesUrl = `${serverBase}/projects/ftb-revelation/files`;
+const axios = require("axios");
+const helmet = require("helmet");
+const express = require("express");
 
 /* Consts */
-// const cdnUrlBase = 'https://media.forgecdn.net/files/2804/30/jei-1.14.4-6.0.0.18.jar';
-const cdnUrlBase = 'https://media.forgecdn.net/files/'; // "currying": this string is incomplete, needs the IDs and filename.
+// const cdnUrlBase = "https://media.forgecdn.net/files/"; // "currying": this string is incomplete, needs the IDs and filename.
+// NOTE we now use edge.forgecdn.net too (see examples returned from API):
+// https://edge.forgecdn.net/files/2789/626/plustic-7.1.6.1.jar
+// https://edge.forgecdn.net/files/2671/937/MouseTweaks-2.10-mc1.12.2.jar
+// https://edge.forgecdn.net/files/2796/426/energyconverters_1.12.2-1.3.3.19.jar
+// https://edge.forgecdn.net/files/2842/381/fluxnetworks-1.12.2-4.0.14-31.jar
+// https://edge.forgecdn.net/files/2831/330/randompatches-1.12.2-1.20.1.0.jar
 
-/* Utils */
-async function getPage(url) {
-    var options = {
-        uri: url,
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:68.0) Gecko/20100101 Firefox/68.0',
-            'Accept': '*/*'
-        },
-        jar: requestModule.jar()
-    };
-    const response = await cloudflarescraper.defaults().get(options);
-    const buffer = new Buffer.from(response, 'binary');
-    return buffer.toString();
-}
-
-function getUrl(base, uri) {
-    return `${base}${uri}`;
-}
-
-function httpsGet(url) {
-    return new Promise((resolve, reject) => {
-        https.get(url, resolve);
-    })
-}
-
-function getIdUri(idUnified) {
-    // assumption: 4 + 3 = 7
-    length = idUnified.length;
-
-    // assumption, if length > 7, the first part of the uri (a/b -> a) will change, and b's length will not
-    const idFirst = idUnified.slice(0, length - 3);
-    const idSecond = idUnified.slice(length - 3, length);
-
-    return `${idFirst}/${idSecond}`;
-}
-
-/**
- * Constructs the actual CDN download link, based on an educated guess of the ID formatting.
- */
-function getCdnUrl(downloadPageUrl, filename) {
-    const idUnified = downloadPageUrl.split("/").pop(); // last part of URL, assumption: no params (?a=b&c=d)
-
-    return `${cdnUrlBase}${getIdUri(idUnified)}/${filename}`;
-}
-
-async function getCdnUrlFromDownloadUrl(downloadPageUrl) {
-    // We also need the filename. To do that, we need to fetch the download page from downloadPageUrl
-    const downloadPage$ = cheerio.load(await getPage(downloadPageUrl));
-
-    let entries = downloadPage$("main article .text-sm:nth-child(2)");
-    let filename = downloadPage$(entries[0]).text();
-
-    if (!filename) {
-        elem = downloadPage$(".details-info li:nth-child(1) .overflow-tip");
-        filename = downloadPage$(elem).text();
-    }
-
-    return getCdnUrl(downloadPageUrl, filename);
-}
-
-/* Scrapers */
-// https://www.feed-the-beast.com/projects/ftb-revelation/files/2712061 (FTBRevelation-3.0.1-1.12.2.zip)
-// Eldcerust note: Update requested to version FTB Revelation 3.2.0
-// gets a specific frozen version of FTB Revelation
 async function getFtbRevelation() {
-    return 'https://media.forgecdn.net/files/2778/975/FTBRevelationServer_3.2.0.zip';
+  // return "https://media.forgecdn.net/files/2778/975/FTBRevelationServer_3.2.0.zip";
+  return "https://media.forgecdn.net/files/2690/320/FTB+Presents+Direwolf20+1.12-1.12.2-2.5.0-Server.zip";
 }
 
-// https://www.curseforge.com/minecraft/mc-mods/mcjtylib/files/all
-const modsProjects = 'https://www.curseforge.com/minecraft/mc-mods/';
-const modsBase = 'https://www.curseforge.com';
+async function getSF4() {
+  return "https://media.forgecdn.net/files/2787/18/SkyFactory_4_Server_4.1.0.zip";
+}
+
+// 2020-02-28: updated to use API https://twitchappapi.docs.apiary.io/
+// same format as manifest.json (without required key)
+/*
 const mods = [
-    { name: 'plustic', version: 'plustic-7.1.6.1.jar' },
-    // { name: 'randompatches', version: 'RandomPatches 1.12.2-1.19.1.1' },
-    { name: 'mouse-tweaks', version: '[1.12.2] Mouse Tweaks 2.10' },
-    { name: 'energy-converters', version: 'energyconverters_1.12.2-1.3.3.19.jar' },
-    { name: 'flux-networks', version: 'Flux-Networks-1.12.2-4.0.14' },
-    { name: 'laggoggles', version: 'LagGoggles-FAT-1.12.2-4.9.jar' },
-    { name: 'randompatches', version: 'RandomPatches 1.12.2-1.20.1.0' }
+  { projectID: 260327, fileID: 2789626 }, // plustic-7.1.6.1.jar
+  { projectID: 60089, fileID: 2671937 }, // [1.12.2] Mouse Tweaks 2.10
+  { projectID: 254818, fileID: 2796426 }, // energyconverters_1.12.2-1.3.3.19.jar
+  { projectID: 248020, fileID: 2842381 }, // Flux-Networks-1.12.2-4.0.14
+  { projectID: 285612, fileID: 2831330 }, // RandomPatches 1.12.2-1.20.1.0
+  { projectID: 233105, fileID: 2660396 }, // mcjtylib-1.12-3.1.1.jar
+];
+*/
+
+// 2020-04-19: DW20 build
+const mods = [
+  { projectID: 260327, fileID: 2789626 }, // plustic-7.1.6.1.jar
+  { projectID: 254818, fileID: 2796426 }, // energyconverters_1.12.2-1.3.3.19.jar
+  { projectID: 248020, fileID: 2842381 }, // Flux-Networks-1.12.2-4.0.14
+  { projectID: 285612, fileID: 2831330 }, // RandomPatches 1.12.2-1.20.1.0
+  { projectID: 253619, fileID: 2899820 }, // realfilingcabinet-1.12-0.2.0.21.jar
 ];
 
-async function getModUrl(mod, nPages, pageNo = 1) {
-    // console.log('getModUrl()', mod, nPages, pageNo);
-    // console.log('getModUrl()', mod.name);
-    const url = `${modsProjects}${mod.name}${mod.version ? `/files/all?page=${pageNo}` : ''}`;
-    // console.log(url);
-    const $ = cheerio.load(await getPage(url));
-    // console.log(`Got page for ${mod}`);
+async function getPage(url) {
+  console.log(`Fetching page: ${url}`);
 
-    let downloadUrl;
-    if (!mod.version) {
-        // console.log('Version not set. Going to get the latest version instead');
-        // TODO not fixed for Curse's last update
-        downloadUrl = getUrl(modsBase, $('.categories-container a').attr('href'));
-    } else {
-        const links = [];
-
-        // console.log(`We have ${nPages} pages`);
-
-        // get the number of pages (for checking at the tail of the recursive call if we've reached the end of the list)
-        if (!nPages) {
-            let items = []
-            $('.ml-auto .pagination-top').map((i, elem) => {
-                const x = $('a',elem);
-                // console.log(x.attr('href'));
-                // console.log(x.html())
-                items.push(x.attr('href'));
-            });
-
-            let max = -1;
-            items.map(entry => {
-                const parts = entry.split('page=');
-                const pageNo = parseInt(parts[parts.length - 1]);
-                if (pageNo > max) {
-                    max = pageNo;
-                }
-            });
-
-            nPages = max;
-            // console.log(`Got ${nPages} pages`);
-        }
-
-        $('.listing-body .project-file-listing tbody tr')
-            .map((i, elem) => {
-                const version = $('a, #file-link', elem).text().split('\n')[0].split('+')[0];
-                const uri = $('a, .button--hollow',elem).attr('href');
-
-                // get the URL of the download button
-                // const uri = $('.project-file-download-button .button').attr('href');
-                links.push({
-                    version,
-                    uri
-                });
-            })
-
-        const matchIfAny = links.find(link => {
-            return link.version == mod.version
-        });
-
-        // console.log('getModUrl()2', mod, nPages, pageNo);
-
-        if (matchIfAny) {
-            downloadUrl = getUrl(modsBase, matchIfAny.uri)
-        } else {
-            // if no match, try checking the next page
-            if (pageNo != nPages) {
-                // check the next page
-                return await getModUrl(mod, nPages, pageNo + 1);
-            }
-
-            // else
-            // no more work left to be done, mod not found.
-            return null;
-
-        }
-    }
-
-    // follow the redirect to the actual CDN download link
-    if (!downloadUrl) {
-        return;
-    }
-
-    const downloadPageUrl = (await httpsGet(downloadUrl)).responseUrl;
-
-    return await getCdnUrlFromDownloadUrl(downloadPageUrl);
+  const response = await axios.get(url, {
+    responseType: "arraybuffer"
+  });
+  const buffer = new Buffer.from(response.data, "binary");
+  return buffer.toString();
 }
 
+const getApiResponse = async (projectID, fileID) => {
+    const url = `https://addons-ecs.forgesvc.net/api/v2/addon/${projectID}/file/${fileID}`;
+    return await axios.get(url);
+}
+
+/* Main Application */
 const app = express();
 app.use(helmet());
 
-app.get('/', async (req, res) => {
-    res.send(await getFtbRevelation());
-})
+app.get("/", async (req, res) => {
+  res.send(await getFtbRevelation());
+  // res.send(await getSF4());
+});
 
-app.get('/mods', async (req, res) => {
-    const promises = mods.map(mod => getModUrl(mod));
-    const promiseAll = Promise.all(promises);
-    const links = await promiseAll;
+app.get("/mods", async (req, res) => {
+    try {
+        const promises = mods.map(async mod => {
+            const { projectID, fileID } = mod;
+            const response = await getApiResponse(projectID, fileID);
+            if (response.status != 200) {
+                const message = `Error fetching mod with projectID: ${projectID} and fileID: ${fileID}, status code: ${response.status}`; 
+                console.error(message);
+            } else {
+                return response.data.downloadUrl;
+            }
+        });
 
-    // const links = [];
-    // for (let i = 0; i < mods.length; i++) {
-    //     const link = await getModUrl(mods[i]);
-    //     links.push(link);
-    // }
+        const links = await Promise.all(promises);
 
-    res.send(links.join('\r\n'));
-})
+        res.send(links.join("\r\n"));
+    } catch (e) {
+        console.error(e);
+        res.status(500).send(e);
+    }
+    
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port);
